@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>utils.py</title>
+  <link rel="stylesheet" href="pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>utils.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">networkx</span> <span class="k">as</span> <span class="nn">nx</span>
+<span class="kn">from</span> <span class="nn">scipy</span> <span class="kn">import</span> <span class="n">sparse</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pyspark</span>
+<span class="kn">from</span> <span class="nn">pyspark.context</span> <span class="kn">import</span> <span class="n">SparkContext</span><span class="p">,</span> <span class="n">SparkConf</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql</span> <span class="kn">import</span> <span class="n">SparkSession</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.window</span> <span class="kn">import</span> <span class="n">Window</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.types</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">pyspark.sql.functions</span> <span class="k">as</span> <span class="nn">f</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.functions</span> <span class="kn">import</span> <span class="n">when</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.types</span> <span class="kn">import</span> <span class="n">LongType</span><span class="p">,</span> <span class="n">StringType</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">,</span> <span class="n">DoubleType</span>
+<span class="kn">import</span> <span class="nn">os</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_get_local_site_packages_dir</span><span class="p">():</span>
+    <span class="kn">import</span> <span class="nn">splink_graph</span>
+
+    <span class="k">return</span> <span class="n">splink_graph</span><span class="o">.</span><span class="vm">__file__</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">11</span><span class="p">]</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_create_spark_jars_string</span><span class="p">():</span>
+    <span class="n">sitestr</span> <span class="o">=</span> <span class="n">_get_local_site_packages_dir</span><span class="p">()</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">pyspark</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;2&quot;</span><span class="p">):</span>
+        <span class="n">spark_jars_string</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">sitestr</span>
+            <span class="o">+</span> <span class="s2">&quot;jars/graphframes-0.6.0-spark2.3-s_2.11.jar,&quot;</span>
+            <span class="o">+</span> <span class="n">sitestr</span>
+            <span class="o">+</span> <span class="s2">&quot;jars/scala-logging-api_2.11-2.1.2.jar, &quot;</span>
+            <span class="o">+</span> <span class="n">sitestr</span>
+            <span class="o">+</span> <span class="s2">&quot;jars/scala-logging-slf4j_2.11-2.1.2.jar&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">spark_jars_string</span> <span class="o">=</span> <span class="n">sitestr</span> <span class="o">+</span> <span class="s2">&quot;jars/graphframes-0.8.0-spark3.0-s_2.12&quot;</span>
+    <span class="k">return</span> <span class="n">spark_jars_string</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_graphharmoniser</span><span class="p">(</span><span class="n">sparkdf</span><span class="p">,</span> <span class="n">colsrc</span><span class="p">,</span> <span class="n">coldst</span><span class="p">):</span>
+
+    <span class="n">sparkdf</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;newsrc&quot;</span><span class="p">,</span>
+        <span class="n">when</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">colsrc</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">coldst</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">colsrc</span><span class="p">))</span><span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">coldst</span><span class="p">)),</span>
+    <span class="p">)</span>
+    <span class="n">sparkdf</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;newdst&quot;</span><span class="p">,</span>
+        <span class="n">when</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">coldst</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">colsrc</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">coldst</span><span class="p">))</span><span class="o">.</span><span class="n">otherwise</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">colsrc</span><span class="p">)),</span>
+    <span class="p">)</span>
+    <span class="n">sparkdf</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">sparkdf</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">colsrc</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="n">colsrc</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;newsrc&quot;</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="n">coldst</span><span class="p">)</span>
+        <span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="n">coldst</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;newdst&quot;</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;newsrc&quot;</span><span class="p">,</span> <span class="s2">&quot;newdst&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">sparkdf</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_probability_to_normalised_bayes_factor</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">prob_colname</span><span class="p">,</span> <span class="n">out_colname</span><span class="o">=</span><span class="s2">&quot;match_score_norm&quot;</span>
+<span class="p">):</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;__match_score__&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">expr</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;log2(</span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2">/(1-</span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2">))&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">log2_bf</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;log2(</span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2">/(1-</span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2">))&quot;</span>
+    <span class="n">expr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    case</span>
+<span class="s2">        when </span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2"> = 0.0 then -40</span>
+<span class="s2">        when </span><span class="si">{</span><span class="n">prob_colname</span><span class="si">}</span><span class="s2"> = 1.0 then 40</span>
+<span class="s2">        when </span><span class="si">{</span><span class="n">log2_bf</span><span class="si">}</span><span class="s2"> &gt; 40 then 40</span>
+<span class="s2">        when </span><span class="si">{</span><span class="n">log2_bf</span><span class="si">}</span><span class="s2"> &lt; -40 then -40</span>
+<span class="s2">        else </span><span class="si">{</span><span class="n">log2_bf</span><span class="si">}</span><span class="s2"></span>
+<span class="s2">        end</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;__match_score__&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">expr</span><span class="p">(</span><span class="n">expr</span><span class="p">))</span>
+
+    <span class="n">score_min</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="s2">&quot;__match_score__&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">score_max</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="s2">&quot;__match_score__&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">collect</span><span class="p">()[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">expr</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
+<span class="s2">    1.01 - ((__match_score__ - </span><span class="si">{</span><span class="n">score_min</span><span class="si">}</span><span class="s2">)/</span><span class="si">{</span><span class="n">score_max</span> <span class="o">-</span> <span class="n">score_min</span><span class="si">}</span><span class="s2"> )</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="n">out_colname</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">expr</span><span class="p">(</span><span class="n">expr</span><span class="p">))</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;match_score&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      <p>Raise an exception if the dataframe
+does not contain the desired columns</p>
+<p>Args:</p>
+<pre><code>sparkdf (pyspark.sql.DataFrame):
+columns (list of strings):  Set of columns that must be present in df
+</code></pre>
+<p>Raises:
+    ValueError: if the dataframe does not contain the desired columns</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_assert_columns</span><span class="p">(</span><span class="n">sparkdf</span><span class="p">,</span> <span class="n">columns</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">have</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+    <span class="n">need</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">columns</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">need</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="n">have</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Missing columns in DataFrame: </span><span class="si">%s</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">need</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">have</span><span class="p">)))</span>
+        <span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">nodes_from_edge_df</span><span class="p">(</span><span class="n">edge_df</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">id_colname</span><span class="o">=</span><span class="s2">&quot;id&quot;</span><span class="p">):</span>
+
+    <span class="n">nsrc</span> <span class="o">=</span> <span class="n">edge_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">src</span><span class="p">)</span><span class="o">.</span><span class="n">withColumnRenamed</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">id_colname</span><span class="p">)</span>
+    <span class="n">ndst</span> <span class="o">=</span> <span class="n">edge_df</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span><span class="o">.</span><span class="n">withColumnRenamed</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span> <span class="n">id_colname</span><span class="p">)</span>
+    <span class="n">nodes</span> <span class="o">=</span> <span class="n">nsrc</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="n">ndst</span><span class="p">)</span><span class="o">.</span><span class="n">distinct</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">nodes</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_nodearray_from_edge_df</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span>
+<span class="p">):</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">collect_set</span><span class="p">(</span><span class="n">src</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_1&quot;</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">collect_list</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;_2&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;nodes&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">array_union</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_1&quot;</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;_2&quot;</span><span class="p">)))</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span>
+        <span class="s2">&quot;_1&quot;</span><span class="p">,</span> <span class="s2">&quot;_2&quot;</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      <p>Takes as input :
+    a networkx graph nxGraph</p>
+<p>Returns: a dictionary of the computed shortest path lengths between all nodes in a graph. Accepts weighted or unweighted graphs</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_nx_compute_all_pairs_shortest_path</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">lengths</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">all_pairs_dijkstra_path_length</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">)</span>
+    <span class="n">lengths</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">lengths</span><span class="p">)</span>  <span class="c1"># for compatibility with network 1.11 code</span>
+    <span class="k">return</span> <span class="n">lengths</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      <p>Takes as input :
+    the output of _nx_compute_all_pairs_shortest_path function which is a dictionary of shortest paths from the graph that function took as input</p>
+<p>Returns: the longest shortest path
+This is also known as the <em>diameter</em> of a graph</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_nx_longest_shortest_path</span><span class="p">(</span><span class="n">lengths</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">max_length</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">max</span><span class="p">(</span><span class="n">lengths</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">lengths</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">max_length</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      <p>Args:
+    nxgraph: undirected NetworkX graph</p>
+<p>Returns:
+    L: Scipy sparse format Laplacian matrix</p>
+<p>The Laplacian matrix L = D - A  is calculated where
+A: Adjacency Matrix
+D: Diagonal Matrix
+L: Laplacian Matrix</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_laplacian_matrix</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">A</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">to_scipy_sparse_matrix</span><span class="p">(</span>
+        <span class="n">nxgraph</span><span class="p">,</span> <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;csr&quot;</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float</span><span class="p">,</span> <span class="n">nodelist</span><span class="o">=</span><span class="n">nxgraph</span><span class="o">.</span><span class="n">nodes</span>
+    <span class="p">)</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">spdiags</span><span class="p">(</span>
+        <span class="n">data</span><span class="o">=</span><span class="n">A</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span>
+        <span class="n">diags</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="n">m</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">),</span>
+        <span class="n">n</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">),</span>
+        <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;csr&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">L</span> <span class="o">=</span> <span class="n">D</span> <span class="o">-</span> <span class="n">A</span>
+
+    <span class="k">return</span> <span class="n">L</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      <p>Args:
+    nxgraph: undirected NetworkX graph</p>
+<p>Returns:
+   la_spectrum: laplacian spectrum of the graph</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_laplacian_spectrum</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">la_spectrum</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">laplacian_spectrum</span><span class="p">(</span><span class="n">nxgraph</span><span class="p">)</span>
+    <span class="n">la_spectrum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">la_spectrum</span><span class="p">)</span>  <span class="c1"># sort ascending</span>
+
+    <span class="k">return</span> <span class="n">la_spectrum</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      <p>Args:</p>
+<pre><code>g (Graphframe): an unweighted Graphframe graph g
+</code></pre>
+<p>Returns:</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_from_unweighted_graphframe_to_nxGraph</span><span class="p">(</span><span class="n">g</span><span class="p">):</span>
+        <span class="n">nxGraph</span><span class="p">:</span>    <span class="n">an</span> <span class="n">unweighted</span> <span class="n">networkx</span> <span class="n">graph</span><span class="s2">&quot;&quot;&quot;</span>
+
+<span class="s2">    nxGraph = nx.Graph()</span>
+<span class="s2">    nxGraph.add_nodes_from(g.vertices.rdd.map(lambda x: x.id).collect())</span>
+<span class="s2">    nxGraph.add_edges_from(g.edges.rdd.map(lambda x: (x.src, x.dst)).collect())</span>
+<span class="s2">    return nxGraph</span>
+<span class="s2">#DIVIDER</span>
+<span class="s2">def _from_weighted_graphframe_to_nxGraph(g):</span>
+<span class="s2">    &quot;&quot;&quot;</span>
+    <span class="n">Args</span><span class="p">:</span>
+
+       <span class="n">g</span> <span class="p">(</span><span class="n">Graphframe</span><span class="p">):</span> <span class="n">a</span> <span class="n">weighted</span> <span class="n">Graphframe</span> <span class="n">graph</span> <span class="n">g</span> <span class="p">(</span><span class="n">note</span><span class="p">:</span> <span class="n">edge</span> <span class="n">weight</span> <span class="n">column</span> <span class="n">needs</span> <span class="n">to</span> <span class="n">be</span> <span class="n">called</span> <span class="k">as</span> <span class="n">weight</span> <span class="n">on</span> <span class="n">the</span> <span class="n">Graphframe</span><span class="p">)</span>
+
+    <span class="n">Returns</span><span class="p">:</span>
+
+       <span class="n">nxGraph</span><span class="p">:</span><span class="n">a</span> <span class="n">weighted</span> <span class="n">networkx</span> <span class="n">graph</span><span class="s2">&quot;&quot;&quot;</span>
+
+<span class="s2">    nxGraph = nx.Graph()</span>
+<span class="s2">    nxGraph.add_nodes_from(g.vertices.rdd.map(lambda x: x.id).collect())</span>
+<span class="s2">    nxGraph.add_weighted_edges_from(</span>
+<span class="s2">        g.edges.rdd.map(lambda x: (x.src, x.dst, x.weight)).collect()</span>
+<span class="s2">    )</span>
+<span class="s2">    return nxGraph</span>
+<span class="s2">#DIVIDER</span>
+<span class="s2">def read_edgelists_from_dir(directory):</span>
+
+<span class="s2">    listofnxgraphs = []</span>
+<span class="s2">    if &quot;/&quot; in directory:</span>
+<span class="s2">        directory = directory.strip(&quot;/&quot;)</span>
+
+<span class="s2">    for filename in os.listdir(directory):</span>
+<span class="s2">        if filename.endswith(&quot;edgelist&quot;):</span>
+
+<span class="s2">            current_g = nx.read_edgelist(directory + &quot;/&quot; + filename)</span>
+<span class="s2">            relabeled_g = nx.convert_node_labels_to_integers(</span>
+<span class="s2">                current_g, first_label=0, ordering=&quot;default&quot;, label_attribute=&quot;node_id&quot;</span>
+<span class="s2">            )</span>
+
+<span class="s2">            listofnxgraphs.append(relabeled_g)</span>
+
+<span class="s2">    return listofnxgraphs</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      <p>read a directory of edgelist files and import them into networkx graphs</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

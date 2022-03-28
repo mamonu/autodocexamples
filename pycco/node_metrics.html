@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>node_metrics.py</title>
+  <link rel="stylesheet" href="pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>node_metrics.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">pyspark</span>
+<span class="kn">import</span> <span class="nn">networkx</span> <span class="k">as</span> <span class="nn">nx</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.types</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">LongType</span><span class="p">,</span>
+    <span class="n">StringType</span><span class="p">,</span>
+    <span class="n">FloatType</span><span class="p">,</span>
+    <span class="n">IntegerType</span><span class="p">,</span>
+    <span class="n">DoubleType</span><span class="p">,</span>
+    <span class="n">StructType</span><span class="p">,</span>
+    <span class="n">StructField</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">import</span> <span class="nn">pyspark.sql.functions</span> <span class="k">as</span> <span class="nn">f</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.functions</span> <span class="kn">import</span> <span class="n">pandas_udf</span><span class="p">,</span> <span class="n">PandasUDFType</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.centrality</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">eigenvector_centrality</span><span class="p">,</span>
+    <span class="n">harmonic_centrality</span><span class="p">,</span>
+<span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    distance_colname: distance column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+
+Returns:
+    node_id:
+    eigen_centrality: eigenvector centrality of cluster cluster_id
+    cluster_id: cluster_id corresponding to the node_id
+</code></pre>
+<p>Eigenvector Centrality is an algorithm that measures the transitive influence or connectivity of nodes.
+Eigenvector Centrality was proposed by Phillip Bonacich, in his 1986 paper Power and Centrality:
+A Family of Measures.
+It was the first of the centrality measures that considered the transitive importance of a node in a graph,
+rather than only considering its direct importance.
+Relationships to high-scoring nodes contribute more to the score of a node than connections to low-scoring nodes.
+A high score means that a node is connected to other nodes that have high scores.</p>
+<p>example input spark dataframe</p>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0|   0.329|
+|  f|  g|  0.34|         0|   0.659|
+|  b|  c|  0.56|8589934592|   0.439|
+|  g|  h|  0.99|         0|   0.010|
+|  a|  b|   0.4|8589934592|     0.6|
+|  h|  i|   0.5|         0|     0.5|
+|  h|  j|   0.8|         0|   0.199|
+|  d|  e|  0.84|         0|   0.160|
+|  e|  f|  0.65|         0|    0.35|</p>
+<p>example output spark dataframe</p>
+<p>|node_id|   eigen_centrality|cluster_id|
+|-------|-------------------|----------|
+|   b   |  0.707106690085642|8589934592|
+|   c   | 0.5000000644180599|8589934592|
+|   a   | 0.5000000644180599|8589934592|
+|   f   | 0.5746147732828122|         0|
+|   d   | 0.4584903903420785|         0|
+|   g   |0.37778352393858183|         0|
+|   h   |0.27663243805676946|         0|
+|   i   |0.12277029263709134|         0|
+|   j   |0.12277029263709134|         0|
+|   e   | 0.4584903903420785|         0|</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">eigencentrality</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">ecschema</span> <span class="o">=</span> <span class="n">StructType</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;node_id&quot;</span><span class="p">,</span> <span class="n">StringType</span><span class="p">()),</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;eigen_centrality&quot;</span><span class="p">,</span> <span class="n">DoubleType</span><span class="p">()),</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    distance_colname: distance column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+
+Returns:
+    node_id:
+    harmonic_centrality: Harmonic centrality of cluster cluster_id
+    cluster_id: cluster_id corresponding to the node_id
+</code></pre>
+<p>Harmonic centrality (also known as valued centrality) is a variant of closeness centrality, that was invented
+to solve the problem the original formula had when dealing with unconnected graphs.
+Harmonic centrality was proposed by Marchiori and Latora  while trying to come up with a sensible notion of &ldquo;average shortest path&rdquo;.
+They suggested a different way of calculating the average distance to that used in the Closeness Centrality algorithm.
+Rather than summing the distances of a node to all other nodes, the harmonic centrality algorithm sums the inverse of those distances.
+This enables it deal with infinite values.</p>
+<p>input spark dataframe:</p>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0|   0.329|
+|  f|  g|  0.34|         0|   0.659|
+|  b|  c|  0.56|8589934592|   0.439|
+|  g|  h|  0.99|         0|   0.010|
+|  a|  b|   0.4|8589934592|     0.6|
+|  h|  i|   0.5|         0|     0.5|
+|  h|  j|   0.8|         0|   0.199|
+|  d|  e|  0.84|         0|   0.160|
+|  e|  f|  0.65|         0|    0.35|</p>
+<p>output spark dataframe:</p>
+<p>|node_id|harmonic_centrality|cluster_id|
+|-------|-------------------|----------|
+|   b   |                2.0|8589934592|
+|   c   |                1.5|8589934592|
+|   a   |                1.5|8589934592|
+|   f   |  4.166666666666667|         0|
+|   d   | 3.3333333333333335|         0|
+|   g   |                4.0|         0|
+|   h   |  4.166666666666667|         0|
+|   i   | 2.8333333333333335|         0|
+|   j   | 2.8333333333333335|         0|
+|   e   | 3.3333333333333335|         0|</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span><span class="n">ecschema</span><span class="p">,</span> <span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">eigenc</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+        <span class="n">ec</span> <span class="o">=</span> <span class="n">eigenvector_centrality</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-03</span><span class="p">)</span>
+        <span class="n">out_df</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">ec</span><span class="p">,</span> <span class="n">orient</span><span class="o">=</span><span class="s2">&quot;index&quot;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;eigen_centrality&quot;</span><span class="p">])</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">rename</span><span class="p">(</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="s2">&quot;node_id&quot;</span><span class="p">,</span> <span class="s2">&quot;eigen_centrality&quot;</span><span class="p">:</span> <span class="s2">&quot;eigen_centrality&quot;</span><span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">cluster_id</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">out_df</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span> <span class="o">=</span> <span class="n">cluster_id</span>
+        <span class="k">return</span> <span class="n">out_df</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">eigenc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">harmoniccentrality</span><span class="p">(</span><span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">hcschema</span> <span class="o">=</span> <span class="n">StructType</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;node_id&quot;</span><span class="p">,</span> <span class="n">StringType</span><span class="p">()),</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;harmonic_centrality&quot;</span><span class="p">,</span> <span class="n">DoubleType</span><span class="p">()),</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span><span class="n">hcschema</span><span class="p">,</span> <span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">harmc</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+        <span class="n">hc</span> <span class="o">=</span> <span class="n">harmonic_centrality</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">out_df</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">hc</span><span class="p">,</span> <span class="n">orient</span><span class="o">=</span><span class="s2">&quot;index&quot;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;harmonic_centrality&quot;</span><span class="p">])</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">rename</span><span class="p">(</span>
+                <span class="n">columns</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">&quot;index&quot;</span><span class="p">:</span> <span class="s2">&quot;node_id&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;harmonic_centrality&quot;</span><span class="p">:</span> <span class="s2">&quot;harmonic_centrality&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">cluster_id</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">out_df</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span> <span class="o">=</span> <span class="n">cluster_id</span>
+        <span class="k">return</span> <span class="n">out_df</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">harmc</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>cluster_metrics.py</title>
+  <link rel="stylesheet" href="pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>cluster_metrics.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">pyspark.sql.types</span> <span class="kn">import</span> <span class="p">(</span>
+    <span class="n">LongType</span><span class="p">,</span>
+    <span class="n">StringType</span><span class="p">,</span>
+    <span class="n">FloatType</span><span class="p">,</span>
+    <span class="n">IntegerType</span><span class="p">,</span>
+    <span class="n">StructType</span><span class="p">,</span>
+    <span class="n">StructField</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">import</span> <span class="nn">pyspark.sql.functions</span> <span class="k">as</span> <span class="nn">f</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.functions</span> <span class="kn">import</span> <span class="n">pandas_udf</span><span class="p">,</span> <span class="n">PandasUDFType</span>
+<span class="kn">import</span> <span class="nn">networkx</span> <span class="k">as</span> <span class="nn">nx</span>
+<span class="kn">import</span> <span class="nn">networkx.algorithms.community</span> <span class="k">as</span> <span class="nn">nx_comm</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.distance_measures</span> <span class="kn">import</span> <span class="n">diameter</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.cluster</span> <span class="kn">import</span> <span class="n">transitivity</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.centrality</span> <span class="kn">import</span> <span class="n">edge_betweenness_centrality</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.bridges</span> <span class="kn">import</span> <span class="n">bridges</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.community.centrality</span> <span class="kn">import</span> <span class="n">girvan_newman</span>
+<span class="kn">from</span> <span class="nn">networkx.algorithms.components</span> <span class="kn">import</span> <span class="n">articulation_points</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">from</span> <span class="nn">splink_graph.utils</span> <span class="kn">import</span> <span class="n">_laplacian_spectrum</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <p>Read on how to setup spark to work around with pandas udf:
+see answers on
+https://stackoverflow.com/questions/58458415/pandas-scalar-udf-failing-illegalargumentexception</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      <p>show nodecount , edgecount, density and enumerate nodes per cluster/conn. components subgraph</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cluster_basic_stats</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">weight_colname</span><span class="o">=</span><span class="s2">&quot;weight&quot;</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <p>example input spark dataframe:</p>
+<p>|src|dst|cluster_id|
+|&mdash;|&mdash;|----------|
+|  f|  d|         0|
+|  f|  g|         0|
+|  b|  c|8589934592|
+|  g|  h|         0|
+|  a|  b|8589934592|
+|  h|  i|         0|
+|  h|  j|         0|
+|  d|  e|         0|
+|  e|  f|         0|</p>
+<p>example output spark dataframe:</p>
+<p>|cluster_id|               nodes|nodecount|edgecount|density|
+|----------|--------------------|---------|---------|------|
+|8589934592|           [b, a, c]|        3|        2|0.666|
+|         0|[h, g, f, e, d, i..]|        7|        7|0.333|</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">edgec</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">weight_colname</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;edgecount&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">srcdf</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">collect_set</span><span class="p">(</span><span class="n">src</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;sources&quot;</span><span class="p">))</span>
+    <span class="n">dstdf</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">collect_set</span><span class="p">(</span><span class="n">dst</span><span class="p">)</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="s2">&quot;destinations&quot;</span><span class="p">))</span>
+    <span class="n">allnodes</span> <span class="o">=</span> <span class="n">srcdf</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">dstdf</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">cluster_id_colname</span><span class="p">)</span>
+    <span class="n">allnodes</span> <span class="o">=</span> <span class="n">allnodes</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;nodes&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">array_union</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;sources&quot;</span><span class="p">),</span> <span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;destinations&quot;</span><span class="p">))</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;nodecount&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;nodes&quot;</span><span class="p">)))</span>
+
+    <span class="n">output</span> <span class="o">=</span> <span class="n">allnodes</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">edgec</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="n">cluster_id_colname</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      <p>density related calcs based on nodecount and max possible number of edges in an undirected graph</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;maxNumberOfEdgesundir&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">expr</span><span class="p">(</span><span class="s2">&quot;(nodecount*(nodecount-1))/2&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span>
+        <span class="s2">&quot;density&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">expr</span><span class="p">(</span><span class="s2">&quot;edgecount/maxNumberOfEdgesundir&quot;</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">drop</span><span class="p">(</span><span class="s2">&quot;sources&quot;</span><span class="p">,</span> <span class="s2">&quot;destinations&quot;</span><span class="p">,</span> <span class="s2">&quot;maxNumberOfEdgesundir&quot;</span><span class="p">)</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">withColumnRenamed</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">,</span> <span class="s2">&quot;cluster_id&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">output</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      <p>calculate weisfeiler-lehman graph hash of a cluster</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cluster_graph_hash</span><span class="p">(</span><span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      <p>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <p>calculate weisfeiler-lehman graph hash of a cluster taking into account the edge weights too.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;graphhash&quot;</span><span class="p">,</span> <span class="n">StringType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">gh</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">weisfeiler_lehman_graph_hash</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">h</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;graphhash&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">gh</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">cluster_graph_hash_edge_attr</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">edge_attr_col</span><span class="o">=</span><span class="kc">None</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      <p>weights are converted to strings for the hashing.</p>
+<p>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+    edge_attr_col: edge attributes (like edge weights) column</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      <p>calculate diameter / transitivity(GCC) / triangle clustering coefficient LCC / square clustering coeff</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;graphhash_ea&quot;</span><span class="p">,</span> <span class="n">StringType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">gh_edge_attr</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="k">if</span> <span class="n">edge_attr_col</span><span class="p">:</span>
+            <span class="n">pdf</span><span class="p">[</span><span class="n">edge_attr_col</span><span class="p">]</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">edge_attr_col</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">str</span><span class="p">)</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">,</span> <span class="p">[</span><span class="n">edge_attr_col</span><span class="p">])</span>
+
+        <span class="n">ghe</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">weisfeiler_lehman_graph_hash</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">edge_attr</span><span class="o">=</span><span class="n">edge_attr_col</span><span class="p">)</span>
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">ghe</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;graphhash_ea&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">gh_edge_attr</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">cluster_main_stats</span><span class="p">(</span><span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+
+
+
+input spark dataframe:
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>output spark dataframe:
+</code></pre>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      <p>outputs connectivity metrics per cluster_id</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;diameter&quot;</span><span class="p">,</span> <span class="n">IntegerType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;transitivity&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;tri_clustcoeff&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;sq_clustcoeff&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">drt</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">diameter</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">transitivity</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">tric</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">average_clustering</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">sq</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">square_clustering</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">sqc</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">sq</span><span class="o">.</span><span class="n">values</span><span class="p">())</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">sq</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">d</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">tric</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">sqc</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;diameter&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;transitivity&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;tri_clustcoeff&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;sq_clustcoeff&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">drt</span><span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;tri_clustcoeff&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;tri_clustcoeff&quot;</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;sq_clustcoeff&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;sq_clustcoeff&quot;</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+        <span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;transitivity&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;transitivity&quot;</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">cluster_connectivity_stats</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+
+Returns:
+
+    node_conn: Node Connectivity measures the minimal number of vertices that can be removed to disconnect the graph.
+    edge_conn: Edge connectivity measures the minimal number of edges that can be removed to disconnect the graph.
+    degeneracy: a way to measure sparsity
+    num_articulation_pts: how many articulation points? an articulation point is a node that if removed disconnects a graph
+
+
+The larger these metrics are --&gt; the more connected the subggraph is.
+
+
+
+input spark dataframe:
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>output spark dataframe:
+</code></pre>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    distance_colname: column name where edge distance (1-weight) is available
+    cluster_id_colname: column that contains Graphframes-created connected components created cluster_id
+
+Returns:
+    cluster_id: connected components created cluster_id
+    comp_eb_modularity: modularity for cluster_id if it partitioned into 2 parts at the point where the highest edge betweenness exists
+
+
+example input spark dataframe
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>example output spark dataframe
+</code></pre>
+<p>|cluster_id|comp_eb_modularity|
+|----------|----------------|
+|         0| 0.400|
+|8589934592| -0.04|</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;node_conn&quot;</span><span class="p">,</span> <span class="n">IntegerType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;edge_conn&quot;</span><span class="p">,</span> <span class="n">IntegerType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;degeneracy&quot;</span><span class="p">,</span> <span class="n">IntegerType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;num_articulation_pts&quot;</span><span class="p">,</span> <span class="n">IntegerType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">conn_eff</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+        <span class="n">nc</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">algorithms</span><span class="o">.</span><span class="n">node_connectivity</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">ec</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">algorithms</span><span class="o">.</span><span class="n">edge_connectivity</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">dg</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">nx</span><span class="o">.</span><span class="n">core_number</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+        <span class="n">ap</span> <span class="o">=</span> <span class="n">articulation_points</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+        <span class="n">num_aps</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">ap</span><span class="p">))</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">nc</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">ec</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">dg</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">num_aps</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;node_conn&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;edge_conn&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;degeneracy&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;num_articulation_pts&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">conn_eff</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">cluster_eb_modularity</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">distance_colname</span><span class="o">=</span><span class="s2">&quot;distance&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span>
+    <span class="n">pdistance</span> <span class="o">=</span> <span class="n">distance_colname</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_eb_modularity&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">cluster_eb_m</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">,</span> <span class="n">pdistance</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      <h1>TODO: document this code</h1>
+<p>this is a method that calculates the modularity of a cluster if partitioned into 2 parts
+where the split is happening where the highest edge betweeness is.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      <p>if modularity is negative :
+     that means that the split just leaves singleton nodes or something like that.
+     basically the cluster is of no interest
+if modularity is 0 or very close to 0 :
+     its a cluster of well connected nodes so&hellip; nothing to see here really.
+if modularity is around 0.3+ then :
+     its a cluster of possible interest</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">def</span> <span class="nf">largest_edge_betweenness</span><span class="p">(</span><span class="n">G</span><span class="p">):</span>
+            <span class="n">centrality</span> <span class="o">=</span> <span class="n">edge_betweenness_centrality</span><span class="p">(</span>
+                <span class="n">G</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">pdistance</span><span class="p">,</span> <span class="n">normalized</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">centrality</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">centrality</span><span class="o">.</span><span class="n">get</span><span class="p">)</span>
+
+        <span class="n">comp</span> <span class="o">=</span> <span class="n">girvan_newman</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">most_valuable_edge</span><span class="o">=</span><span class="n">largest_edge_betweenness</span><span class="p">)</span>
+        <span class="n">gn</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">next</span><span class="p">(</span><span class="n">comp</span><span class="p">))</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+        <span class="n">nc</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">number_of_nodes</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">nc</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">co_eb_mod</span> <span class="o">=</span> <span class="n">nx_comm</span><span class="o">.</span><span class="n">modularity</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">gn</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ZeroDivisionError</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;ZeroDivisionError on component id </span><span class="si">{</span><span class="n">co</span><span class="si">}</span><span class="s2">. &quot;</span>
+                    <span class="s2">&quot;This can occur if one of the weights (distances) is zero.&quot;</span>
+                <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">co_eb_mod</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.0</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">co_eb_mod</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;cluster_eb_modularity&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">cluster_eb_m</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    distance_colname: column name where edge distance (1-weight) is available
+    cluster_id_colname: column that contains Graphframes-created connected components created cluster_id
+
+Returns:
+    cluster_id: connected components created cluster_id
+    cluster_lpg_modularity: modularity for cluster_id if it partitioned into 2 parts based on label propagation
+
+
+example input spark dataframe
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>example output spark dataframe
+</code></pre>
+<p>|cluster_id|cluster_lpg_modularity|
+|----------|----------------|
+|         0| 0.400|
+|8589934592| -0.04|</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cluster_lpg_modularity</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">distance_colname</span><span class="o">=</span><span class="s2">&quot;distance&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-20'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-20'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span>
+    <span class="n">pdistance</span> <span class="o">=</span> <span class="n">distance_colname</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-21'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-21'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_lpg_modularity&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">cluster_lpg_m</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">,</span> <span class="n">pdistance</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-22'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-22'>#</a>
+      </div>
+      <h1>TODO: document this code</h1>
+<p>this is a method that calculates the modularity of a cluster if partitioned into 2 parts
+where the split is happening based on label propagation clustering.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-23'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-23'>#</a>
+      </div>
+      <p>if modularity is negative :
+     that means that the split just leaves singleton nodes or something like that.
+     basically the cluster is of no interest
+if modularity is 0 or very close to 0 :
+     its a cluster of well connected nodes so&hellip; nothing to see here really.
+if modularity is around 0.3+ then :
+     its a cluster of possible interest</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">gn</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">nx_comm</span><span class="o">.</span><span class="n">label_propagation_communities</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">))</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+        <span class="n">co_lpg_mod</span> <span class="o">=</span> <span class="n">nx_comm</span><span class="o">.</span><span class="n">modularity</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">gn</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">co_lpg_mod</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;cluster_lpg_modularity&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">cluster_lpg_m</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-24'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-24'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    distance_colname: column name where edge distance (1-weight) is available
+    cluster_id_colname: column that contains Graphframes-created connected components created cluster_id
+
+Returns:
+    cluster_id: connected components created cluster_id
+    avg_cluster_eb: average edge betweeness for cluster_id
+
+input spark dataframe:
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>output spark dataframe:
+</code></pre>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cluster_avg_edge_betweenness</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">distance_colname</span><span class="o">=</span><span class="s2">&quot;distance&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-25'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-25'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span>
+    <span class="n">pdistance</span> <span class="o">=</span> <span class="n">distance_colname</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-26'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-26'>#</a>
+      </div>
+      <p>return</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;avg_cluster_eb&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;wiener_ind&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">avg_eb</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">,</span> <span class="n">pdistance</span><span class="p">)</span>
+        <span class="n">w</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">wiener_index</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+
+        <span class="n">edge_btwn</span> <span class="o">=</span> <span class="n">edge_betweenness_centrality</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">,</span> <span class="n">normalized</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">edge_btwn</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">aeb</span> <span class="o">=</span> <span class="nb">round</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">edge_btwn</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">edge_btwn</span><span class="p">),</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">aeb</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">aeb</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">w</span><span class="p">]],</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="s2">&quot;avg_cluster_eb&quot;</span><span class="p">,</span> <span class="s2">&quot;wiener_ind&quot;</span><span class="p">]</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">avg_eb</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">number_of_bridges</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-27'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-27'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+</code></pre>
+<p>Returns:
+        cluster_id: Connected components created cluster_id
+        num_bridges: The number of bridges in the cluster</p>
+<p>example input spark dataframe</p>
+<p>|src|dst|cluster_id|
++&mdash;|&mdash;|----------|
+|  f|  d|         0|
+|  f|  g|         0|
+|  b|  c|8589934592|
+|  g|  h|         0|
+|  a|  b|8589934592|
+|  h|  i|         0|
+|  h|  j|         0|
+|  d|  e|         0|
+|  e|  f|         0|</p>
+<p>example output spark dataframe</p>
+<p>|   cluster_id |   number_of_bridges |
+|-------------:|--------------------:|
+|   8589934592 |                   2 |
+|            0 |                   4 |</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span>
+    <span class="n">pcomponent</span> <span class="o">=</span> <span class="n">cluster_id_colname</span>
+
+    <span class="n">bridgesoutSchema</span> <span class="o">=</span> <span class="n">StructType</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+            <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;number_of_bridges&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+        <span class="p">]</span>
+    <span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-28'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-28'>#</a>
+      </div>
+      <p>calculate assortativity of a cluster</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span><span class="n">bridgesoutSchema</span><span class="p">,</span> <span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">br_p_udf</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+
+        <span class="n">b</span> <span class="o">=</span> <span class="n">bridges</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span>
+
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">co</span><span class="p">],</span> <span class="s2">&quot;number_of_bridges&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">b</span><span class="p">))]}</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+    <span class="n">indf</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">,</span> <span class="n">pcomponent</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">indf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">br_p_udf</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">out</span>
+
+
+<span class="k">def</span> <span class="nf">cluster_assortativity</span><span class="p">(</span>
+    <span class="n">sparkdf</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-29'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-29'>#</a>
+      </div>
+      <pre><code>Args:
+    sparkdf: imput edgelist Spark DataFrame
+    src: src column name
+    dst: dst column name
+    cluster_id_colname: Graphframes-created connected components created cluster_id
+
+
+
+input spark dataframe:
+</code></pre>
+<p>|src|dst|weight|cluster_id|distance|
+|&mdash;|&mdash;|------|----------|--------|
+|  f|  d|  0.67|         0| 0.329|
+|  f|  g|  0.34|         0| 0.659|
+|  b|  c|  0.56|8589934592| 0.439|
+|  g|  h|  0.99|         0|0.010|
+|  a|  b|   0.4|8589934592|0.6|
+|  h|  i|   0.5|         0|0.5|
+|  h|  j|   0.8|         0| 0.199|
+|  d|  e|  0.84|         0| 0.160|
+|  e|  f|  0.65|         0|0.35|</p>
+<pre><code>output spark dataframe:
+</code></pre>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">psrc</span> <span class="o">=</span> <span class="n">src</span>
+    <span class="n">pdst</span> <span class="o">=</span> <span class="n">dst</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-30'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-30'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="nd">@pandas_udf</span><span class="p">(</span>
+        <span class="n">StructType</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="n">LongType</span><span class="p">()),</span>
+                <span class="n">StructField</span><span class="p">(</span><span class="s2">&quot;assortativity&quot;</span><span class="p">,</span> <span class="n">FloatType</span><span class="p">()),</span>
+            <span class="p">]</span>
+        <span class="p">),</span>
+        <span class="n">functionType</span><span class="o">=</span><span class="n">PandasUDFType</span><span class="o">.</span><span class="n">GROUPED_MAP</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">def</span> <span class="nf">asrt</span><span class="p">(</span><span class="n">pdf</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+        <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">pdf</span><span class="p">,</span> <span class="n">psrc</span><span class="p">,</span> <span class="n">pdst</span><span class="p">)</span>
+
+        <span class="n">r</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">degree_pearson_correlation_coefficient</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-31'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-31'>#</a>
+      </div>
+      <p>when all degrees are equal (grids or full graphs) assortativity is undefined/nan
+However we can think this case as fully correlated so we put it as 1</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">if</span> <span class="n">math</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">r</span><span class="p">):</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+        <span class="n">co</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">cluster_id_colname</span><span class="p">]</span><span class="o">.</span><span class="n">iloc</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># access component id</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">co</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">r</span><span class="p">]],</span>
+            <span class="n">columns</span><span class="o">=</span><span class="p">[</span>
+                <span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;assortativity&quot;</span><span class="p">,</span>
+            <span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">sparkdf</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">asrt</span><span class="p">)</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s2">&quot;assortativity&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;assortativity&quot;</span><span class="p">),</span> <span class="mi">3</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">out</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

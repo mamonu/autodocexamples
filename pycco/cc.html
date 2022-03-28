@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>cc.py</title>
+  <link rel="stylesheet" href="pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>cc.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">networkx</span> <span class="k">as</span> <span class="nn">nx</span>
+<span class="kn">import</span> <span class="nn">pyspark</span>
+<span class="kn">import</span> <span class="nn">warnings</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.session</span> <span class="kn">import</span> <span class="n">SparkSession</span>
+<span class="kn">from</span> <span class="nn">pyspark.context</span> <span class="kn">import</span> <span class="n">SparkContext</span><span class="p">,</span> <span class="n">SparkConf</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql</span> <span class="kn">import</span> <span class="n">SparkSession</span>
+<span class="kn">from</span> <span class="nn">pyspark.sql.types</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="kn">import</span> <span class="nn">pyspark.sql.functions</span> <span class="k">as</span> <span class="nn">f</span>
+<span class="kn">import</span> <span class="nn">pandas</span> <span class="k">as</span> <span class="nn">pd</span>
+<span class="kn">from</span> <span class="nn">graphframes</span> <span class="kn">import</span> <span class="n">GraphFrame</span>
+<span class="kn">from</span> <span class="nn">splink_graph.utils</span> <span class="kn">import</span> <span class="n">nodes_from_edge_df</span>
+<span class="kn">import</span> <span class="nn">os</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">_find_graphframes_jars</span><span class="p">(</span><span class="n">spark</span><span class="p">:</span> <span class="n">SparkSession</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">graphframes</span> <span class="kn">import</span> <span class="n">GraphFrame</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ImportError</span><span class="p">(</span>
+            <span class="s2">&quot;need to import graphframes. ie from graphframes import Graphframes&quot;</span>
+            <span class="s2">&quot;if you dont have it you need first to install graphframes from PyPI&quot;</span>
+            <span class="s2">&quot;i.e.  pip install graphframes==0.6.0 &quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">sparkjars_conf</span> <span class="o">=</span> <span class="n">spark</span><span class="o">.</span><span class="n">conf</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;spark.jars&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s2">&quot;graphframes&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sparkjars_conf</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="s2">&quot;You need to include the path to the graphframes jar to your spark.jars conf settings&quot;</span>
+            <span class="s2">&quot;when you define your &#39;sparkSession&#39;&quot;</span>
+            <span class="s2">&quot;Check related documentation on INSTALL.md on the splink_graph repo&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">if</span> <span class="s2">&quot;logging&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">sparkjars_conf</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="s2">&quot;You need to include the path to `scala-logging-api` and `scala-logging-slf4j` &quot;</span>
+            <span class="s2">&quot;to your spark.jars conf settings when you define your &#39;sparkSession&#39; &quot;</span>
+            <span class="s2">&quot;Check related documentation on INSTALL.md on the splink_graph repo&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="mi">0</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">graphframes_connected_components</span><span class="p">(</span>
+    <span class="n">edges_df</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">weight_colname</span><span class="o">=</span><span class="s2">&quot;tf_adjusted_match_prob&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+    <span class="n">cc_threshold</span><span class="o">=</span><span class="mf">0.90</span><span class="p">,</span>
+<span class="p">):</span>
+
+    <span class="n">edges_for_cc</span> <span class="o">=</span> <span class="n">edges_df</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">weight_colname</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">cc_threshold</span><span class="p">)</span>
+    <span class="n">nodes_for_cc</span> <span class="o">=</span> <span class="n">nodes_from_edge_df</span><span class="p">(</span>
+        <span class="n">edges_for_cc</span><span class="p">,</span> <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span> <span class="n">id_colname</span><span class="o">=</span><span class="s2">&quot;id&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">g</span> <span class="o">=</span> <span class="n">GraphFrame</span><span class="p">(</span><span class="n">nodes_for_cc</span><span class="p">,</span> <span class="n">edges_for_cc</span><span class="p">)</span>
+    <span class="n">cc</span> <span class="o">=</span> <span class="n">g</span><span class="o">.</span><span class="n">connectedComponents</span><span class="p">()</span>
+
+    <span class="n">cc</span> <span class="o">=</span> <span class="n">cc</span><span class="o">.</span><span class="n">withColumnRenamed</span><span class="p">(</span><span class="s2">&quot;component&quot;</span><span class="p">,</span> <span class="n">cluster_id_colname</span><span class="p">)</span><span class="o">.</span><span class="n">withColumnRenamed</span><span class="p">(</span>
+        <span class="s2">&quot;id&quot;</span><span class="p">,</span> <span class="s2">&quot;node_id&quot;</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">cc</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">nx_connected_components</span><span class="p">(</span>
+    <span class="n">spark</span><span class="p">:</span> <span class="n">SparkSession</span><span class="p">,</span>
+    <span class="n">edges_df</span><span class="p">,</span>
+    <span class="n">src</span><span class="o">=</span><span class="s2">&quot;src&quot;</span><span class="p">,</span>
+    <span class="n">dst</span><span class="o">=</span><span class="s2">&quot;dst&quot;</span><span class="p">,</span>
+    <span class="n">weight_colname</span><span class="o">=</span><span class="s2">&quot;tf_adjusted_match_prob&quot;</span><span class="p">,</span>
+    <span class="n">cluster_id_colname</span><span class="o">=</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span>
+    <span class="n">cc_threshold</span><span class="o">=</span><span class="mf">0.90</span><span class="p">,</span>
+    <span class="n">edgelistdir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      <p>Function to use if you have an edge dataframe of up to 2 million rows.
+For bigger dataframes use graphframes_connected_components function</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">pdf</span> <span class="o">=</span> <span class="n">edges_df</span><span class="o">.</span><span class="n">toPandas</span><span class="p">()</span>
+
+    <span class="n">filtered_pdf</span> <span class="o">=</span> <span class="n">pdf</span><span class="p">[</span><span class="n">pdf</span><span class="p">[</span><span class="n">weight_colname</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">cc_threshold</span><span class="p">]</span>
+
+    <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+    <span class="n">nxGraph</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">from_pandas_edgelist</span><span class="p">(</span><span class="n">filtered_pdf</span><span class="p">,</span> <span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">,</span> <span class="n">weight_colname</span><span class="p">)</span>
+
+    <span class="n">netid</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">cclist</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">idlist</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">nx</span><span class="o">.</span><span class="n">connected_components</span><span class="p">(</span><span class="n">nxGraph</span><span class="p">):</span>
+        <span class="n">netid</span> <span class="o">=</span> <span class="n">netid</span> <span class="o">+</span> <span class="mi">1</span>  <span class="c1"># go to next conn comp id</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      <p>create a graph from this connected component</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">currentnx</span> <span class="o">=</span> <span class="n">nxGraph</span><span class="o">.</span><span class="n">subgraph</span><span class="p">(</span><span class="n">c</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      <p>if we need to write the edgelist of the component to a directory do so.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">if</span> <span class="n">edgelistdir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">edgelistdir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">nx</span><span class="o">.</span><span class="n">write_edgelist</span><span class="p">(</span>
+                <span class="n">currentnx</span><span class="p">,</span> <span class="n">edgelistdir</span> <span class="o">+</span> <span class="s2">&quot;/cluster&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">netid</span><span class="p">)</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">9</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;edgelist&quot;</span>
+            <span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <p>append the current cc id and the node id for this component</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">currentnx</span><span class="o">.</span><span class="n">nodes</span><span class="p">():</span>
+            <span class="n">idlist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">cclist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">netid</span><span class="p">)</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">9</span><span class="p">))</span>
+
+    <span class="n">out</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">cclist</span><span class="p">,</span> <span class="n">idlist</span><span class="p">),</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">,</span> <span class="s2">&quot;node_id&quot;</span><span class="p">])</span>
+
+    <span class="n">out</span><span class="p">[</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="s2">&quot;cluster_id&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;int64&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">spark</span><span class="o">.</span><span class="n">createDataFrame</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>
