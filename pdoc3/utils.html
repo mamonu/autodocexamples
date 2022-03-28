@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.9.2" />
+<title>splink_graph.utils API documentation</title>
+<meta name="description" content="" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>splink_graph.utils</code></h1>
+</header>
+<section id="section-intro">
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">import networkx as nx
+from scipy import sparse
+import numpy as np
+import pyspark
+from pyspark.context import SparkContext, SparkConf
+from pyspark.sql import SparkSession
+from pyspark.sql.window import Window
+from pyspark.sql.types import *
+import pyspark.sql.functions as f
+from pyspark.sql.functions import when
+from pyspark.sql.types import LongType, StringType, FloatType, DoubleType
+import os
+
+
+def _get_local_site_packages_dir():
+    import splink_graph
+
+    return splink_graph.__file__[0:-11]
+
+
+def _create_spark_jars_string():
+    sitestr = _get_local_site_packages_dir()
+    if (pyspark.__version__).startswith(&#34;2&#34;):
+        spark_jars_string = (
+            sitestr
+            + &#34;jars/graphframes-0.6.0-spark2.3-s_2.11.jar,&#34;
+            + sitestr
+            + &#34;jars/scala-logging-api_2.11-2.1.2.jar, &#34;
+            + sitestr
+            + &#34;jars/scala-logging-slf4j_2.11-2.1.2.jar&#34;
+        )
+    else:
+        spark_jars_string = sitestr + &#34;jars/graphframes-0.8.0-spark3.0-s_2.12&#34;
+    return spark_jars_string.replace(&#34; &#34;, &#34;&#34;)
+
+
+def _graphharmoniser(sparkdf, colsrc, coldst):
+
+    sparkdf = sparkdf.withColumn(
+        &#34;newsrc&#34;,
+        when(f.col(colsrc) &lt; f.col(coldst), f.col(colsrc)).otherwise(f.col(coldst)),
+    )
+    sparkdf = sparkdf.withColumn(
+        &#34;newdst&#34;,
+        when(f.col(coldst) &gt; f.col(colsrc), f.col(coldst)).otherwise(f.col(colsrc)),
+    )
+    sparkdf = (
+        sparkdf.drop(colsrc)
+        .withColumn(colsrc, f.col(&#34;newsrc&#34;))
+        .drop(coldst)
+        .withColumn(coldst, f.col(&#34;newdst&#34;))
+        .drop(&#34;newsrc&#34;, &#34;newdst&#34;)
+    )
+    return sparkdf
+
+
+def _probability_to_normalised_bayes_factor(
+    df, prob_colname, out_colname=&#34;match_score_norm&#34;
+):
+
+    df = df.withColumn(
+        &#34;__match_score__&#34;, f.expr(f&#34;log2({prob_colname}/(1-{prob_colname}))&#34;)
+    )
+
+    log2_bf = f&#34;log2({prob_colname}/(1-{prob_colname}))&#34;
+    expr = f&#34;&#34;&#34;
+    case
+        when {prob_colname} = 0.0 then -40
+        when {prob_colname} = 1.0 then 40
+        when {log2_bf} &gt; 40 then 40
+        when {log2_bf} &lt; -40 then -40
+        else {log2_bf}
+        end
+    &#34;&#34;&#34;
+
+    df = df.withColumn(&#34;__match_score__&#34;, f.expr(expr))
+
+    score_min = df.select(f.min(&#34;__match_score__&#34;)).collect()[0][0]
+    score_max = df.select(f.max(&#34;__match_score__&#34;)).collect()[0][0]
+
+    expr = f&#34;&#34;&#34;
+    1.01 - ((__match_score__ - {score_min})/{score_max - score_min} )
+    &#34;&#34;&#34;
+    df = df.withColumn(out_colname, f.expr(expr))
+
+    df = df.drop(&#34;match_score&#34;)
+
+    return df
+
+
+def _assert_columns(sparkdf, columns):
+    &#34;&#34;&#34;
+    Raise an exception if the dataframe
+    does not contain the desired columns
+
+    Args:
+
+        sparkdf (pyspark.sql.DataFrame):
+        columns (list of strings):  Set of columns that must be present in df
+    Raises:
+        ValueError: if the dataframe does not contain the desired columns
+
+
+    &#34;&#34;&#34;
+    have = set(df.columns)
+    need = set(columns)
+    if not need.issubset(have):
+        raise ValueError(
+            &#34;Missing columns in DataFrame: %s&#34; % (&#34;, &#34;.join(need.difference(have)))
+        )
+
+
+def nodes_from_edge_df(edge_df, src=&#34;src&#34;, dst=&#34;dst&#34;, id_colname=&#34;id&#34;):
+
+    nsrc = edge_df.select(src).withColumnRenamed(src, id_colname)
+    ndst = edge_df.select(dst).withColumnRenamed(dst, id_colname)
+    nodes = nsrc.union(ndst).distinct()
+
+    return nodes
+
+
+def _nodearray_from_edge_df(
+    sparkdf, src=&#34;src&#34;, dst=&#34;dst&#34;, cluster_id_colname=&#34;cluster_id&#34;
+):
+
+    out = sparkdf.groupby(cluster_id_colname).agg(
+        f.collect_set(src).alias(&#34;_1&#34;), f.collect_list(dst).alias(&#34;_2&#34;)
+    )
+    out = out.withColumn(&#34;nodes&#34;, f.array_union(f.col(&#34;_1&#34;), f.col(&#34;_2&#34;))).drop(
+        &#34;_1&#34;, &#34;_2&#34;
+    )
+    return out
+
+
+def _nx_compute_all_pairs_shortest_path(nxgraph, weight=None, normalize=False):
+
+    &#34;&#34;&#34;
+    Takes as input :
+        a networkx graph nxGraph
+
+    Returns: a dictionary of the computed shortest path lengths between all nodes in a graph. Accepts weighted or unweighted graphs
+
+    &#34;&#34;&#34;
+
+    lengths = nx.all_pairs_dijkstra_path_length(nxgraph, weight=weight)
+    lengths = dict(lengths)  # for compatibility with network 1.11 code
+    return lengths
+
+
+def _nx_longest_shortest_path(lengths):
+    &#34;&#34;&#34;
+    Takes as input :
+        the output of _nx_compute_all_pairs_shortest_path function which is a dictionary of shortest paths from the graph that function took as input
+
+    Returns: the longest shortest path
+    This is also known as the *diameter* of a graph
+
+
+    &#34;&#34;&#34;
+
+    max_length = max([max(lengths[i].values()) for i in lengths])
+    return max_length
+
+
+def _laplacian_matrix(nxgraph):
+    &#34;&#34;&#34;
+
+    Args:
+        nxgraph: undirected NetworkX graph
+
+    Returns:
+        L: Scipy sparse format Laplacian matrix
+
+
+
+    The Laplacian matrix L = D - A  is calculated where
+    A: Adjacency Matrix
+    D: Diagonal Matrix
+    L: Laplacian Matrix
+    &#34;&#34;&#34;
+    A = nx.to_scipy_sparse_matrix(
+        nxgraph, format=&#34;csr&#34;, dtype=np.float, nodelist=nxgraph.nodes
+    )
+    D = sparse.spdiags(
+        data=A.sum(axis=1).flatten(),
+        diags=[0],
+        m=len(nxgraph),
+        n=len(nxgraph),
+        format=&#34;csr&#34;,
+    )
+    L = D - A
+
+    return L
+
+
+def _laplacian_spectrum(nxgraph):
+    &#34;&#34;&#34;
+    Args:
+        nxgraph: undirected NetworkX graph
+
+    Returns:
+       la_spectrum: laplacian spectrum of the graph
+
+    &#34;&#34;&#34;
+
+    la_spectrum = nx.laplacian_spectrum(nxgraph)
+    la_spectrum = np.sort(la_spectrum)  # sort ascending
+
+    return la_spectrum
+
+
+def _from_unweighted_graphframe_to_nxGraph(g):
+    &#34;&#34;&#34;
+
+    Args:
+
+        g (Graphframe): an unweighted Graphframe graph g
+
+
+    Returns:
+
+        nxGraph:    an unweighted networkx graph&#34;&#34;&#34;
+
+    nxGraph = nx.Graph()
+    nxGraph.add_nodes_from(g.vertices.rdd.map(lambda x: x.id).collect())
+    nxGraph.add_edges_from(g.edges.rdd.map(lambda x: (x.src, x.dst)).collect())
+    return nxGraph
+
+
+def _from_weighted_graphframe_to_nxGraph(g):
+    &#34;&#34;&#34;
+    Args:
+
+       g (Graphframe): a weighted Graphframe graph g (note: edge weight column needs to be called as weight on the Graphframe)
+
+    Returns:
+
+       nxGraph:a weighted networkx graph&#34;&#34;&#34;
+
+    nxGraph = nx.Graph()
+    nxGraph.add_nodes_from(g.vertices.rdd.map(lambda x: x.id).collect())
+    nxGraph.add_weighted_edges_from(
+        g.edges.rdd.map(lambda x: (x.src, x.dst, x.weight)).collect()
+    )
+    return nxGraph
+
+
+# read a directory of edgelist files and import them into networkx graphs
+def read_edgelists_from_dir(directory):
+
+    listofnxgraphs = []
+    if &#34;/&#34; in directory:
+        directory = directory.strip(&#34;/&#34;)
+
+    for filename in os.listdir(directory):
+        if filename.endswith(&#34;edgelist&#34;):
+
+            current_g = nx.read_edgelist(directory + &#34;/&#34; + filename)
+            relabeled_g = nx.convert_node_labels_to_integers(
+                current_g, first_label=0, ordering=&#34;default&#34;, label_attribute=&#34;node_id&#34;
+            )
+
+            listofnxgraphs.append(relabeled_g)
+
+    return listofnxgraphs</code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-functions">Functions</h2>
+<dl>
+<dt id="splink_graph.utils.nodes_from_edge_df"><code class="name flex">
+<span>def <span class="ident">nodes_from_edge_df</span></span>(<span>edge_df, src='src', dst='dst', id_colname='id')</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def nodes_from_edge_df(edge_df, src=&#34;src&#34;, dst=&#34;dst&#34;, id_colname=&#34;id&#34;):
+
+    nsrc = edge_df.select(src).withColumnRenamed(src, id_colname)
+    ndst = edge_df.select(dst).withColumnRenamed(dst, id_colname)
+    nodes = nsrc.union(ndst).distinct()
+
+    return nodes</code></pre>
+</details>
+</dd>
+<dt id="splink_graph.utils.read_edgelists_from_dir"><code class="name flex">
+<span>def <span class="ident">read_edgelists_from_dir</span></span>(<span>directory)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def read_edgelists_from_dir(directory):
+
+    listofnxgraphs = []
+    if &#34;/&#34; in directory:
+        directory = directory.strip(&#34;/&#34;)
+
+    for filename in os.listdir(directory):
+        if filename.endswith(&#34;edgelist&#34;):
+
+            current_g = nx.read_edgelist(directory + &#34;/&#34; + filename)
+            relabeled_g = nx.convert_node_labels_to_integers(
+                current_g, first_label=0, ordering=&#34;default&#34;, label_attribute=&#34;node_id&#34;
+            )
+
+            listofnxgraphs.append(relabeled_g)
+
+    return listofnxgraphs</code></pre>
+</details>
+</dd>
+</dl>
+</section>
+<section>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="splink_graph" href="index.html">splink_graph</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-functions">Functions</a></h3>
+<ul class="">
+<li><code><a title="splink_graph.utils.nodes_from_edge_df" href="#splink_graph.utils.nodes_from_edge_df">nodes_from_edge_df</a></code></li>
+<li><code><a title="splink_graph.utils.read_edgelists_from_dir" href="#splink_graph.utils.read_edgelists_from_dir">read_edgelists_from_dir</a></code></li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc"><cite>pdoc</cite> 0.9.2</a>.</p>
+</footer>
+</body>
+</html>
