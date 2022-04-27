@@ -1,0 +1,21 @@
+site_name: My Documentation example
+#use_directory_urls: false
+theme:
+  name: "material"
+plugins:
+  - search
+  - semiliterate
+  - mknotebooks
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          rendering:
+            show_source: false
+      custom_templates: templates
+nav:
+  - Home: "index.md"
+  - Linking Notebook: "quickstart_demo_linking.ipynb"
+  - Another Noteboook: "combining_estimates.ipynb"
+  - A Webpage: "pdoc3html/graph_strat.html"
+  - Another webpage: "graph_strat.html"
